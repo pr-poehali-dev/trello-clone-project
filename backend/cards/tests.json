@@ -1,0 +1,12 @@
+{
+  "tests": [
+    {
+      "name": "Get cards for board",
+      "method": "GET",
+      "path": "/?board_id=1",
+      "expectedStatus": 200,
+      "expectedBody": [],
+      "bodyMatcher": "partial"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "tests": [
+    {
+      "name": "Get lists for board",
+      "method": "GET",
+      "path": "/?board_id=1",
+      "expectedStatus": 200,
+      "expectedBody": [],
+      "bodyMatcher": "partial"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "tests": [
+    {
+      "name": "Get team members",
+      "method": "GET",
+      "path": "/?action=members",
+      "expectedStatus": 200,
+      "expectedBody": [],
+      "bodyMatcher": "partial"
+    }
+  ]
+}
