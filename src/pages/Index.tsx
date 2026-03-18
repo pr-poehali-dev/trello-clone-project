@@ -1,23 +1,12 @@
-import { useState } from "react";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { useState, useEffect, useCallback } from "react";
 import Icon from "@/components/ui/icon";
+import * as api from "@/api";
 
 // ───── Types ─────
 type CardLabel = "urgent" | "feature" | "bug" | "design" | "review";
-type Card = {
-  id: string;
-  title: string;
-  labels?: CardLabel[];
-  assignee?: string;
-  dueDate?: string;
-  comments?: number;
-  attachments?: number;
-};
-type Column = { id: string; title: string; color: string; cards: Card[] };
-type Board = { id: string; title: string; gradient: string; members: number; cards: number };
-type Notification = { id: string; text: string; time: string; read: boolean; icon: string; color: string };
 type View = "boards" | "board-detail" | "profile" | "team" | "settings";
 
-// ───── Static data ─────
 const LABEL_CONFIG: Record<CardLabel, { color: string; text: string }> = {
   urgent:  { color: "bg-rose-500/20 text-rose-300 border border-rose-500/30",       text: "Срочно" },
   feature: { color: "bg-violet-500/20 text-violet-300 border border-violet-500/30", text: "Фича" },
@@ -26,67 +15,32 @@ const LABEL_CONFIG: Record<CardLabel, { color: string; text: string }> = {
   review:  { color: "bg-amber-500/20 text-amber-300 border border-amber-500/30",    text: "Ревью" },
 };
 
-const INITIAL_BOARDS: Board[] = [
-  { id: "b1", title: "Редизайн сайта",         gradient: "from-violet-600 to-purple-800", members: 5, cards: 12 },
-  { id: "b2", title: "Мобильное приложение",   gradient: "from-cyan-500 to-blue-700",     members: 3, cards: 8 },
-  { id: "b3", title: "Маркетинг Q2",           gradient: "from-pink-500 to-rose-700",     members: 4, cards: 15 },
-  { id: "b4", title: "Бэкенд API v2",          gradient: "from-emerald-500 to-teal-700",  members: 2, cards: 6 },
-  { id: "b5", title: "Аналитика и данные",      gradient: "from-orange-500 to-amber-700",  members: 3, cards: 9 },
+const COLOR_GRADIENTS: Record<string, string> = {
+  purple: "from-violet-600 to-purple-800",
+  cyan:   "from-cyan-500 to-blue-700",
+  pink:   "from-pink-500 to-rose-700",
+  green:  "from-emerald-500 to-teal-700",
+  orange: "from-orange-500 to-amber-700",
+  blue:   "from-blue-500 to-indigo-700",
+};
+
+const COL_COLORS = [
+  "from-slate-500 to-slate-600",
+  "from-violet-600 to-purple-700",
+  "from-amber-500 to-orange-600",
+  "from-emerald-500 to-teal-600",
+  "from-cyan-500 to-blue-600",
 ];
 
-const INITIAL_COLUMNS: Column[] = [
-  {
-    id: "c1", title: "Бэклог", color: "from-slate-500 to-slate-600",
-    cards: [
-      { id: "k1", title: "Исследование конкурентов",    labels: ["feature"], assignee: "АК", dueDate: "25 мар", comments: 3, attachments: 1 },
-      { id: "k2", title: "Настроить CI/CD пайплайн",   labels: ["feature"], assignee: "МВ", comments: 1 },
-      { id: "k3", title: "Документация API",                                 assignee: "ДС", dueDate: "30 мар", attachments: 2 },
-    ],
-  },
-  {
-    id: "c2", title: "В работе", color: "from-violet-600 to-purple-700",
-    cards: [
-      { id: "k4", title: "Редизайн главной страницы",  labels: ["design"],          assignee: "АК", dueDate: "22 мар", comments: 5, attachments: 3 },
-      { id: "k5", title: "Баг с авторизацией OAuth",   labels: ["bug", "urgent"],   assignee: "МВ", dueDate: "20 мар", comments: 8 },
-      { id: "k6", title: "Оптимизация запросов БД",    labels: ["feature"],          assignee: "ДС" },
-    ],
-  },
-  {
-    id: "c3", title: "Ревью", color: "from-amber-500 to-orange-600",
-    cards: [
-      { id: "k7", title: "Компонент навигации",        labels: ["review", "design"], assignee: "АК", comments: 2 },
-      { id: "k8", title: "Тесты модуля оплаты",        labels: ["review"],           assignee: "МВ", dueDate: "21 мар", attachments: 1 },
-    ],
-  },
-  {
-    id: "c4", title: "Готово", color: "from-emerald-500 to-teal-600",
-    cards: [
-      { id: "k9",  title: "Онбординг пользователей",   labels: ["feature"], assignee: "ДС", comments: 4, attachments: 2 },
-      { id: "k10", title: "Email-шаблоны",             labels: ["design"],  assignee: "АК" },
-      { id: "k11", title: "Интеграция со Slack",        labels: ["feature"], assignee: "МВ", comments: 1 },
-    ],
-  },
-];
-
-const NOTIFICATIONS: Notification[] = [
-  { id: "n1", text: "Алекс назначил вас исполнителем задачи «Баг с авторизацией»",   time: "2 мин",  read: false, icon: "UserCheck",    color: "text-violet-400" },
-  { id: "n2", text: "Мария добавила комментарий к «Редизайн главной страницы»",      time: "15 мин", read: false, icon: "MessageCircle", color: "text-cyan-400" },
-  { id: "n3", text: "Задача «CI/CD пайплайн» переведена в Ревью",                    time: "1 ч",    read: false, icon: "ArrowRight",    color: "text-emerald-400" },
-  { id: "n4", text: "Дмитрий прикрепил файл к «Документация API»",                   time: "3 ч",    read: true,  icon: "Paperclip",     color: "text-amber-400" },
-  { id: "n5", text: "Срок «Баг с авторизацией OAuth» истекает завтра",               time: "5 ч",    read: true,  icon: "Clock",         color: "text-rose-400" },
-];
-
-const TEAM_MEMBERS = [
-  { name: "Алекс Климов",    role: "Тимлид",    initials: "АК", color: "from-violet-500 to-purple-600",  tasks: 8, online: true },
-  { name: "Мария Волкова",   role: "Дизайнер",  initials: "МВ", color: "from-pink-500 to-rose-600",      tasks: 5, online: true },
-  { name: "Дмитрий Соколов", role: "Бэкенд",    initials: "ДС", color: "from-cyan-500 to-blue-600",      tasks: 6, online: false },
-  { name: "Ольга Нева",      role: "Фронтенд",  initials: "ОН", color: "from-emerald-500 to-teal-600",   tasks: 4, online: true },
-  { name: "Иван Лебедь",     role: "QA-инженер",initials: "ИЛ", color: "from-amber-500 to-orange-600",   tasks: 3, online: false },
-];
+// ───── Skeleton ─────
+function Skeleton({ className = "" }: { className?: string }) {
+  return <div className={`animate-pulse rounded-lg bg-white/5 ${className}`} />;
+}
 
 // ───── KanbanCard ─────
-function KanbanCard({ card, onDelete }: { card: Card; onDelete: (id: string) => void }) {
+function KanbanCard({ card, onDelete }: { card: any; onDelete: (id: number) => void }) {
   const [hovered, setHovered] = useState(false);
+  const labels: string[] = card.labels || [];
   return (
     <div
       className={`card-drag glass rounded-xl p-3 mb-2 group relative transition-all duration-200
@@ -94,38 +48,37 @@ function KanbanCard({ card, onDelete }: { card: Card; onDelete: (id: string) => 
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {card.labels && card.labels.length > 0 && (
+      {labels.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
-          {card.labels.map(l => (
-            <span key={l} className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${LABEL_CONFIG[l].color}`}>
-              {LABEL_CONFIG[l].text}
-            </span>
-          ))}
+          {labels.map((l: string) => {
+            const cfg = LABEL_CONFIG[l as CardLabel];
+            return cfg ? (
+              <span key={l} className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${cfg.color}`}>
+                {cfg.text}
+              </span>
+            ) : null;
+          })}
         </div>
       )}
       <p className="text-sm font-medium text-foreground leading-snug mb-2">{card.title}</p>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          {card.dueDate && (
+          {card.due_date && (
             <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-              <Icon name="Calendar" size={11} /> {card.dueDate}
+              <Icon name="Calendar" size={11} />
+              {new Date(card.due_date).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}
             </span>
           )}
-          {(card.comments ?? 0) > 0 && (
-            <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-              <Icon name="MessageCircle" size={11} /> {card.comments}
-            </span>
-          )}
-          {(card.attachments ?? 0) > 0 && (
-            <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-              <Icon name="Paperclip" size={11} /> {card.attachments}
+          {card.priority === "high" && (
+            <span className="flex items-center gap-1 text-[11px] text-rose-400">
+              <Icon name="Flame" size={11} /> Высокий
             </span>
           )}
         </div>
-        {card.assignee && (
+        {card.assignee_id && (
           <div className="w-6 h-6 rounded-full bg-gradient-to-br from-violet-500 to-purple-600
             flex items-center justify-center text-[9px] font-bold text-white">
-            {card.assignee}
+            {card.assignee_id}
           </div>
         )}
       </div>
@@ -141,36 +94,41 @@ function KanbanCard({ card, onDelete }: { card: Card; onDelete: (id: string) => 
 }
 
 // ───── KanbanColumn ─────
-function KanbanColumn({ column, onDeleteCard, onAddCard }: {
-  column: Column;
-  onDeleteCard: (colId: string, cardId: string) => void;
-  onAddCard: (colId: string, title: string) => void;
+function KanbanColumn({ column, cards, boardId, onDeleteCard, onAddCard }: {
+  column: any;
+  cards: any[];
+  boardId: number;
+  onDeleteCard: (cardId: number) => void;
+  onAddCard: (listId: number, title: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
+  const [loading, setLoading] = useState(false);
+  const colorIdx = (column.position ?? 0) % COL_COLORS.length;
 
-  const handleAdd = () => {
-    if (newTitle.trim()) {
-      onAddCard(column.id, newTitle.trim());
-      setNewTitle("");
-      setAdding(false);
-    }
+  const handleAdd = async () => {
+    if (!newTitle.trim()) return;
+    setLoading(true);
+    await onAddCard(column.id, newTitle.trim());
+    setNewTitle("");
+    setAdding(false);
+    setLoading(false);
   };
 
   return (
     <div className="flex-shrink-0 w-72 flex flex-col" style={{ maxHeight: "calc(100vh - 180px)" }}>
-      <div className={`rounded-t-xl p-3 bg-gradient-to-r ${column.color}`}>
+      <div className={`rounded-t-xl p-3 bg-gradient-to-r ${column.color || COL_COLORS[colorIdx]}`}>
         <div className="flex items-center justify-between">
           <span className="font-semibold text-white text-sm">{column.title}</span>
           <span className="bg-white/20 text-white text-xs font-bold w-6 h-6 rounded-full
-            flex items-center justify-center">{column.cards.length}</span>
+            flex items-center justify-center">{cards.length}</span>
         </div>
       </div>
       <div className="flex-1 overflow-y-auto scrollbar-thin bg-white/[0.02] rounded-b-xl p-2
         border border-t-0 border-white/5 min-h-[60px]">
-        {column.cards.map((card, i) => (
-          <div key={card.id} className="animate-fade-in" style={{ animationDelay: `${i * 50}ms` }}>
-            <KanbanCard card={card} onDelete={(cid) => onDeleteCard(column.id, cid)} />
+        {cards.map((card, i) => (
+          <div key={card.id} className="animate-fade-in" style={{ animationDelay: `${i * 40}ms` }}>
+            <KanbanCard card={card} onDelete={onDeleteCard} />
           </div>
         ))}
         {adding ? (
@@ -188,10 +146,10 @@ function KanbanColumn({ column, onDeleteCard, onAddCard }: {
               }}
             />
             <div className="flex gap-2 mt-1">
-              <button onClick={handleAdd}
-                className="flex-1 bg-violet-600 hover:bg-violet-500 text-white text-xs font-medium
-                  py-1.5 rounded-lg transition-colors">
-                Добавить
+              <button onClick={handleAdd} disabled={loading}
+                className="flex-1 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white
+                  text-xs font-medium py-1.5 rounded-lg transition-colors">
+                {loading ? "..." : "Добавить"}
               </button>
               <button onClick={() => { setAdding(false); setNewTitle(""); }}
                 className="px-3 text-muted-foreground hover:text-foreground transition-colors">
@@ -213,7 +171,12 @@ function KanbanColumn({ column, onDeleteCard, onAddCard }: {
 }
 
 // ───── Boards View ─────
-function BoardsView({ boards, onSelect }: { boards: Board[]; onSelect: (b: Board) => void }) {
+function BoardsView({ boards, loading, onSelect, onCreateBoard }: {
+  boards: any[];
+  loading: boolean;
+  onSelect: (b: any) => void;
+  onCreateBoard: () => void;
+}) {
   return (
     <div className="p-8 animate-fade-in">
       <div className="mb-8">
@@ -221,60 +184,97 @@ function BoardsView({ boards, onSelect }: { boards: Board[]; onSelect: (b: Board
         <p className="text-muted-foreground text-sm">Управляй проектами в одном месте</p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {boards.map((board, i) => (
-          <button key={board.id} onClick={() => onSelect(board)}
-            className="glass-hover glass rounded-2xl overflow-hidden text-left group animate-fade-in"
-            style={{ animationDelay: `${i * 60}ms` }}>
-            <div className={`h-24 bg-gradient-to-br ${board.gradient} relative overflow-hidden`}>
-              <div className="absolute inset-0 opacity-30"
-                style={{ backgroundImage: "radial-gradient(circle at 70% 30%, rgba(255,255,255,0.3) 0%, transparent 60%)" }} />
-              <div className="absolute bottom-3 left-3 right-3">
-                <h3 className="text-white font-bold text-base leading-tight">{board.title}</h3>
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-36 rounded-2xl" />)
+        ) : (
+          <>
+            {boards.map((board, i) => {
+              const gradient = board.gradient || COLOR_GRADIENTS[board.cover_color] || COLOR_GRADIENTS.purple;
+              return (
+                <button key={board.id} onClick={() => onSelect(board)}
+                  className="glass-hover glass rounded-2xl overflow-hidden text-left group animate-fade-in"
+                  style={{ animationDelay: `${i * 60}ms` }}>
+                  <div className={`h-24 bg-gradient-to-br ${gradient} relative overflow-hidden`}>
+                    <div className="absolute inset-0 opacity-30"
+                      style={{ backgroundImage: "radial-gradient(circle at 70% 30%, rgba(255,255,255,0.3) 0%, transparent 60%)" }} />
+                    {board.is_starred && (
+                      <div className="absolute top-2 right-2">
+                        <Icon name="Star" size={14} className="text-amber-300 fill-amber-300" />
+                      </div>
+                    )}
+                    <div className="absolute bottom-3 left-3 right-3">
+                      <h3 className="text-white font-bold text-base leading-tight">{board.title}</h3>
+                    </div>
+                  </div>
+                  <div className="p-3 flex items-center justify-between">
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Icon name="Users" size={12} /> {board.members ?? 1}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Icon name="LayoutList" size={12} /> {board.cards ?? 0}
+                      </span>
+                    </div>
+                    <Icon name="ArrowRight" size={14}
+                      className="text-muted-foreground group-hover:text-violet-400 group-hover:translate-x-1 transition-all" />
+                  </div>
+                </button>
+              );
+            })}
+            <button onClick={onCreateBoard}
+              className="glass-hover glass rounded-2xl flex flex-col items-center justify-center
+                gap-2 text-muted-foreground hover:text-violet-400 transition-colors border-dashed"
+              style={{ minHeight: "140px" }}>
+              <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center">
+                <Icon name="Plus" size={20} />
               </div>
-            </div>
-            <div className="p-3 flex items-center justify-between">
-              <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1"><Icon name="Users" size={12} /> {board.members}</span>
-                <span className="flex items-center gap-1"><Icon name="LayoutList" size={12} /> {board.cards}</span>
-              </div>
-              <Icon name="ArrowRight" size={14}
-                className="text-muted-foreground group-hover:text-violet-400 group-hover:translate-x-1 transition-all" />
-            </div>
-          </button>
-        ))}
-        <button className="glass-hover glass rounded-2xl flex flex-col items-center justify-center
-          gap-2 text-muted-foreground hover:text-violet-400 transition-colors border-dashed"
-          style={{ minHeight: "140px" }}>
-          <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center">
-            <Icon name="Plus" size={20} />
-          </div>
-          <span className="text-sm font-medium">Новая доска</span>
-        </button>
+              <span className="text-sm font-medium">Новая доска</span>
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
 // ───── Board Detail View ─────
-function BoardDetailView({ board, columns, setColumns }: {
-  board: Board;
-  columns: Column[];
-  setColumns: React.Dispatch<React.SetStateAction<Column[]>>;
-}) {
-  const handleDeleteCard = (colId: string, cardId: string) => {
-    setColumns(cols => cols.map(c =>
-      c.id === colId ? { ...c, cards: c.cards.filter(k => k.id !== cardId) } : c
-    ));
+function BoardDetailView({ board }: { board: any }) {
+  const [lists, setLists] = useState<any[]>([]);
+  const [cards, setCards] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const gradient = board.gradient || COLOR_GRADIENTS[board.cover_color] || COLOR_GRADIENTS.purple;
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [ls, cs] = await Promise.all([api.getLists(board.id), api.getCards(board.id)]);
+      setLists(ls);
+      setCards(cs);
+    } finally { setLoading(false); }
+  }, [board.id]);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const handleDeleteCard = async (cardId: number) => {
+    await api.deleteCard(cardId);
+    setCards(cs => cs.filter(c => c.id !== cardId));
   };
-  const handleAddCard = (colId: string, title: string) => {
-    setColumns(cols => cols.map(c =>
-      c.id === colId ? { ...c, cards: [...c.cards, { id: `k${Date.now()}`, title }] } : c
-    ));
+
+  const handleAddCard = async (listId: number, title: string) => {
+    const newCard = await api.createCard({ list_id: listId, board_id: board.id, title });
+    setCards(cs => [...cs, newCard]);
+  };
+
+  const handleAddList = async () => {
+    const title = prompt("Название нового списка:");
+    if (!title?.trim()) return;
+    const newList = await api.createList({ board_id: board.id, title: title.trim(), position: lists.length });
+    setLists(ls => [...ls, newList]);
   };
 
   return (
     <div className="flex flex-col h-full animate-fade-in">
-      <div className={`px-8 py-4 bg-gradient-to-r ${board.gradient} flex items-center gap-4`}>
+      <div className={`px-8 py-4 bg-gradient-to-r ${gradient} flex items-center gap-4 flex-shrink-0`}>
         <h2 className="text-white font-bold text-xl">{board.title}</h2>
         <div className="flex items-center gap-2 ml-auto">
           {["АК","МВ","ДС"].map((init, i) => (
@@ -289,20 +289,40 @@ function BoardDetailView({ board, columns, setColumns }: {
           </button>
         </div>
       </div>
-      <div className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin">
-        <div className="flex gap-4 p-6 h-full items-start">
-          {columns.map(col => (
-            <KanbanColumn key={col.id} column={col}
-              onDeleteCard={handleDeleteCard} onAddCard={handleAddCard} />
+      {loading ? (
+        <div className="flex gap-4 p-6">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex-shrink-0 w-72">
+              <Skeleton className="h-10 rounded-t-xl" />
+              <div className="bg-white/[0.02] rounded-b-xl p-2 border border-t-0 border-white/5">
+                {Array.from({ length: 3 }).map((__, j) => <Skeleton key={j} className="h-20 mb-2 rounded-xl" />)}
+              </div>
+            </div>
           ))}
-          <div className="flex-shrink-0 w-72">
-            <button className="w-full glass rounded-xl p-3 flex items-center gap-2 text-muted-foreground
-              hover:text-foreground hover:bg-white/5 transition-all text-sm">
-              <Icon name="Plus" size={16} /> Добавить список
-            </button>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin">
+          <div className="flex gap-4 p-6 h-full items-start">
+            {lists.map(col => (
+              <KanbanColumn
+                key={col.id}
+                column={{ ...col, color: COL_COLORS[(col.position ?? 0) % COL_COLORS.length] }}
+                cards={cards.filter(c => c.list_id === col.id)}
+                boardId={board.id}
+                onDeleteCard={handleDeleteCard}
+                onAddCard={handleAddCard}
+              />
+            ))}
+            <div className="flex-shrink-0 w-72">
+              <button onClick={handleAddList}
+                className="w-full glass rounded-xl p-3 flex items-center gap-2 text-muted-foreground
+                  hover:text-foreground hover:bg-white/5 transition-all text-sm">
+                <Icon name="Plus" size={16} /> Добавить список
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -335,7 +355,7 @@ function ProfileView() {
           </div>
         </div>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {stats.map((s, i) => (
           <div key={i} className="glass rounded-xl p-4 text-center animate-fade-in"
             style={{ animationDelay: `${i * 80}ms` }}>
@@ -345,33 +365,36 @@ function ProfileView() {
           </div>
         ))}
       </div>
-      <div className="glass rounded-2xl p-5">
-        <h3 className="font-semibold text-foreground mb-4">Последняя активность</h3>
-        {NOTIFICATIONS.slice(0, 4).map((n, i) => (
-          <div key={n.id} className="flex items-start gap-3 py-3 border-b border-white/5 last:border-0
-            animate-fade-in" style={{ animationDelay: `${i * 60}ms` }}>
-            <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center flex-shrink-0">
-              <Icon name={n.icon} size={14} className={n.color} fallback="Bell" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-foreground leading-snug">{n.text}</p>
-              <span className="text-xs text-muted-foreground">{n.time} назад</span>
-            </div>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
 
 // ───── Team View ─────
 function TeamView() {
+  const [members, setMembers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const FALLBACK = [
+    { name: "Алекс Климов",    role: "Тимлид",    initials: "АК", color: "from-violet-500 to-purple-600", tasks_count: 8,  is_online: true },
+    { name: "Мария Волкова",   role: "Дизайнер",  initials: "МВ", color: "from-pink-500 to-rose-600",     tasks_count: 5,  is_online: true },
+    { name: "Дмитрий Соколов", role: "Бэкенд",    initials: "ДС", color: "from-cyan-500 to-blue-600",     tasks_count: 6,  is_online: false },
+    { name: "Ольга Нева",      role: "Фронтенд",  initials: "ОН", color: "from-emerald-500 to-teal-600",  tasks_count: 4,  is_online: true },
+    { name: "Иван Лебедь",     role: "QA",        initials: "ИЛ", color: "from-amber-500 to-orange-600",  tasks_count: 3,  is_online: false },
+  ];
+
+  useEffect(() => {
+    api.getTeam().then(data => setMembers(data)).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  const display = members.length > 0 ? members : FALLBACK;
+  const online = display.filter(m => m.is_online).length;
+
   return (
     <div className="p-8 animate-fade-in max-w-4xl">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gradient-purple mb-1">Команда</h1>
-          <p className="text-muted-foreground text-sm">5 участников · 3 онлайн</p>
+          <p className="text-muted-foreground text-sm">{display.length} участников · {online} онлайн</p>
         </div>
         <button className="bg-violet-600 hover:bg-violet-500 text-white text-sm px-4 py-2.5
           rounded-xl transition-colors flex items-center gap-2 font-medium">
@@ -379,27 +402,29 @@ function TeamView() {
         </button>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {TEAM_MEMBERS.map((m, i) => (
+        {loading ? (
+          Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-36 rounded-2xl" />)
+        ) : display.map((m: any, i: number) => (
           <div key={i} className="glass glass-hover rounded-2xl p-5 animate-fade-in"
             style={{ animationDelay: `${i * 70}ms` }}>
             <div className="flex items-start gap-3 mb-4">
-              <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${m.color}
+              <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${m.color || "from-violet-500 to-purple-600"}
                 flex items-center justify-center text-white font-bold text-sm flex-shrink-0 relative`}>
-                {m.initials}
+                {m.initials || (m.name || "?")[0]}
                 <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2
-                  border-background ${m.online ? "bg-emerald-400" : "bg-slate-500"}`} />
+                  border-background ${m.is_online ? "bg-emerald-400" : "bg-slate-500"}`} />
               </div>
               <div>
                 <h3 className="font-semibold text-foreground text-sm">{m.name}</h3>
                 <p className="text-xs text-muted-foreground">{m.role}</p>
-                <p className={`text-xs mt-0.5 font-medium ${m.online ? "text-emerald-400" : "text-slate-500"}`}>
-                  {m.online ? "Онлайн" : "Офлайн"}
+                <p className={`text-xs mt-0.5 font-medium ${m.is_online ? "text-emerald-400" : "text-slate-500"}`}>
+                  {m.is_online ? "Онлайн" : "Офлайн"}
                 </p>
               </div>
             </div>
             <div className="flex items-center justify-between">
               <div className="text-xs text-muted-foreground">
-                <span className="text-foreground font-semibold">{m.tasks}</span> активных задач
+                <span className="text-foreground font-semibold">{m.tasks_count ?? 0}</span> активных задач
               </div>
               <button className="glass text-muted-foreground hover:text-foreground text-xs px-3 py-1.5
                 rounded-lg transition-colors">Задачи</button>
@@ -414,30 +439,27 @@ function TeamView() {
 // ───── Settings View ─────
 function SettingsView() {
   const [emailNotif, setEmailNotif] = useState(true);
-  const [pushNotif, setPushNotif]   = useState(true);
-  const [mentions, setMentions]     = useState(true);
-  const [deadlines, setDeadlines]   = useState(true);
+  const [pushNotif,  setPushNotif]  = useState(true);
+  const [mentions,   setMentions]   = useState(true);
+  const [deadlines,  setDeadlines]  = useState(true);
 
   const Toggle = ({ value, onChange }: { value: boolean; onChange: () => void }) => (
     <button onClick={onChange}
-      className={`w-11 h-6 rounded-full transition-all duration-300 relative
-        ${value ? "bg-violet-600" : "bg-white/10"}`}>
-      <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all duration-300
-        ${value ? "left-6" : "left-1"}`} />
+      className={`w-11 h-6 rounded-full transition-all duration-300 relative ${value ? "bg-violet-600" : "bg-white/10"}`}>
+      <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all duration-300 ${value ? "left-6" : "left-1"}`} />
     </button>
   );
 
   const toggleItems = [
-    { label: "Email-уведомления",           desc: "Получать дайджест на почту",                 val: emailNotif, fn: () => setEmailNotif(v => !v) },
-    { label: "Push-уведомления",            desc: "Мгновенные оповещения в браузере",           val: pushNotif,  fn: () => setPushNotif(v => !v) },
-    { label: "Упоминания",                  desc: "Когда вас упоминают в комментариях",         val: mentions,   fn: () => setMentions(v => !v) },
-    { label: "Дедлайны",                    desc: "Напоминания о срочных задачах",              val: deadlines,  fn: () => setDeadlines(v => !v) },
+    { label: "Email-уведомления", desc: "Дайджест на почту",                  val: emailNotif, fn: () => setEmailNotif(v => !v) },
+    { label: "Push-уведомления",  desc: "Мгновенные оповещения в браузере",   val: pushNotif,  fn: () => setPushNotif(v => !v) },
+    { label: "Упоминания",        desc: "Когда вас упоминают в комментариях", val: mentions,   fn: () => setMentions(v => !v) },
+    { label: "Дедлайны",          desc: "Напоминания о срочных задачах",      val: deadlines,  fn: () => setDeadlines(v => !v) },
   ];
 
   return (
     <div className="p-8 animate-fade-in max-w-2xl">
       <h1 className="text-3xl font-bold text-gradient-purple mb-8">Настройки</h1>
-
       <div className="glass rounded-2xl p-6 mb-4">
         <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
           <Icon name="Bell" size={16} className="text-violet-400" /> Уведомления
@@ -452,7 +474,6 @@ function SettingsView() {
           </div>
         ))}
       </div>
-
       <div className="glass rounded-2xl p-6 mb-4">
         <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
           <Icon name="Palette" size={16} className="text-pink-400" /> Внешний вид
@@ -468,7 +489,6 @@ function SettingsView() {
           ))}
         </div>
       </div>
-
       <div className="glass rounded-2xl p-6">
         <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
           <Icon name="Shield" size={16} className="text-emerald-400" /> Безопасность
@@ -488,16 +508,28 @@ function SettingsView() {
 }
 
 // ───── Notification Panel ─────
-function NotificationPanel({ notifications, onClose, onMarkAll }: {
-  notifications: Notification[];
+function NotificationPanel({ notifications, unreadCount, onClose, onMarkAll }: {
+  notifications: any[];
+  unreadCount: number;
   onClose: () => void;
   onMarkAll: () => void;
 }) {
+  const iconMap: Record<string, string> = {
+    assignment: "UserCheck", comment: "MessageCircle", move: "ArrowRight",
+    attachment: "Paperclip", deadline: "Clock", info: "Bell",
+  };
+  const colorMap: Record<string, string> = {
+    assignment: "text-violet-400", comment: "text-cyan-400", move: "text-emerald-400",
+    attachment: "text-amber-400",  deadline: "text-rose-400",  info: "text-slate-400",
+  };
+
   return (
     <div className="absolute top-14 right-4 w-80 glass rounded-2xl shadow-2xl shadow-black/50
       border border-white/10 z-50 animate-notification-drop overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
-        <span className="font-semibold text-foreground text-sm">Уведомления</span>
+        <span className="font-semibold text-foreground text-sm">
+          Уведомления {unreadCount > 0 && <span className="text-violet-400">({unreadCount})</span>}
+        </span>
         <div className="flex items-center gap-2">
           <button onClick={onMarkAll} className="text-xs text-violet-400 hover:text-violet-300 transition-colors">
             Все прочитаны
@@ -508,21 +540,85 @@ function NotificationPanel({ notifications, onClose, onMarkAll }: {
         </div>
       </div>
       <div className="max-h-80 overflow-y-auto scrollbar-thin">
-        {notifications.map((n, i) => (
+        {notifications.length === 0 ? (
+          <div className="px-4 py-8 text-center text-muted-foreground text-sm">Нет уведомлений</div>
+        ) : notifications.map((n: any, i: number) => (
           <div key={n.id}
             className={`flex items-start gap-3 px-4 py-3 border-b border-white/5 last:border-0
-              hover:bg-white/5 transition-colors animate-fade-in ${!n.read ? "bg-violet-500/5" : ""}`}
+              hover:bg-white/5 transition-colors animate-fade-in ${!n.is_read ? "bg-violet-500/5" : ""}`}
             style={{ animationDelay: `${i * 40}ms` }}>
             <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center flex-shrink-0">
-              <Icon name={n.icon} size={14} className={n.color} fallback="Bell" />
+              <Icon name={iconMap[n.type] || "Bell"} size={14}
+                className={colorMap[n.type] || "text-slate-400"} fallback="Bell" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-foreground leading-snug">{n.text}</p>
-              <span className="text-[11px] text-muted-foreground">{n.time} назад</span>
+              <p className="text-xs text-foreground leading-snug">{n.message || n.title}</p>
+              <span className="text-[11px] text-muted-foreground">
+                {new Date(n.created_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
+              </span>
             </div>
-            {!n.read && <div className="w-2 h-2 rounded-full bg-violet-500 flex-shrink-0 mt-1 animate-pulse" />}
+            {!n.is_read && <div className="w-2 h-2 rounded-full bg-violet-500 flex-shrink-0 mt-1 animate-pulse" />}
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ───── Create Board Modal ─────
+function CreateBoardModal({ onClose, onCreate }: { onClose: () => void; onCreate: (b: any) => void }) {
+  const [title, setTitle] = useState("");
+  const [color, setColor] = useState("purple");
+  const [loading, setLoading] = useState(false);
+
+  const colors = [
+    { key: "purple", cls: "bg-gradient-to-br from-violet-600 to-purple-800" },
+    { key: "cyan",   cls: "bg-gradient-to-br from-cyan-500 to-blue-700" },
+    { key: "pink",   cls: "bg-gradient-to-br from-pink-500 to-rose-700" },
+    { key: "green",  cls: "bg-gradient-to-br from-emerald-500 to-teal-700" },
+    { key: "orange", cls: "bg-gradient-to-br from-orange-500 to-amber-700" },
+  ];
+
+  const handleCreate = async () => {
+    if (!title.trim()) return;
+    setLoading(true);
+    try {
+      const board = await api.createBoard({ title: title.trim(), cover_color: color });
+      onCreate({ ...board, gradient: COLOR_GRADIENTS[color] });
+      onClose();
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="glass rounded-2xl p-6 w-full max-w-sm animate-scale-in border border-white/10">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="font-bold text-foreground text-lg">Новая доска</h3>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+            <Icon name="X" size={18} />
+          </button>
+        </div>
+        <div className={`h-20 rounded-xl mb-4 bg-gradient-to-br ${COLOR_GRADIENTS[color]} flex items-end p-3`}>
+          <span className="text-white font-bold text-sm">{title || "Название доски"}</span>
+        </div>
+        <input autoFocus type="text" placeholder="Название доски"
+          value={title} onChange={e => setTitle(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && handleCreate()}
+          className="w-full glass rounded-xl px-4 py-3 text-sm text-foreground placeholder-muted-foreground
+            outline-none border border-white/10 focus:border-violet-500/50 mb-4" />
+        <div className="flex gap-2 mb-5">
+          {colors.map(c => (
+            <button key={c.key} onClick={() => setColor(c.key)}
+              className={`flex-1 h-8 rounded-lg ${c.cls} transition-all
+                ${color === c.key ? "ring-2 ring-white/60 scale-105" : "opacity-60 hover:opacity-100"}`} />
+          ))}
+        </div>
+        <button onClick={handleCreate} disabled={!title.trim() || loading}
+          className="w-full bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white font-medium
+            py-2.5 rounded-xl transition-colors">
+          {loading ? "Создаём..." : "Создать доску"}
+        </button>
       </div>
     </div>
   );
@@ -531,13 +627,19 @@ function NotificationPanel({ notifications, onClose, onMarkAll }: {
 // ───── Main App ─────
 export default function Index() {
   const [view, setView] = useState<View>("boards");
-  const [selectedBoard, setSelectedBoard] = useState<Board | null>(null);
-  const [boards] = useState<Board[]>(INITIAL_BOARDS);
-  const [columns, setColumns] = useState<Column[]>(INITIAL_COLUMNS);
-  const [notifications, setNotifications] = useState<Notification[]>(NOTIFICATIONS);
+  const [selectedBoard, setSelectedBoard] = useState<any>(null);
+  const [boards, setBoards] = useState<any[]>([]);
+  const [boardsLoading, setBoardsLoading] = useState(true);
+  const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotif, setShowNotif] = useState(false);
+  const [showCreateBoard, setShowCreateBoard] = useState(false);
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = notifications.filter((n: any) => !n.is_read).length;
+
+  useEffect(() => {
+    api.getBoards().then(data => setBoards(data)).finally(() => setBoardsLoading(false));
+    api.getNotifications(1).then(data => setNotifications(data.notifications || [])).catch(() => {});
+  }, []);
 
   const navItems = [
     { id: "boards",   label: "Доски",     icon: "Layout" },
@@ -548,7 +650,6 @@ export default function Index() {
 
   return (
     <div className="h-screen flex flex-col bg-background mesh-bg overflow-hidden">
-
       {/* ── Top Nav ── */}
       <header className="flex-shrink-0 h-14 glass border-b border-white/5 flex items-center px-4 gap-3 relative z-40">
         <div className="flex items-center gap-2 mr-4">
@@ -603,8 +704,12 @@ export default function Index() {
           {showNotif && (
             <NotificationPanel
               notifications={notifications}
+              unreadCount={unreadCount}
               onClose={() => setShowNotif(false)}
-              onMarkAll={() => setNotifications(ns => ns.map(n => ({ ...n, read: true })))}
+              onMarkAll={() => {
+                api.markAllRead(1).catch(() => {});
+                setNotifications(ns => ns.map(n => ({ ...n, is_read: true })));
+              }}
             />
           )}
         </div>
@@ -619,17 +724,23 @@ export default function Index() {
       {/* ── Content ── */}
       <main className="flex-1 overflow-auto scrollbar-thin">
         {view === "boards" && (
-          <BoardsView boards={boards} onSelect={b => { setSelectedBoard(b); setView("board-detail"); }} />
+          <BoardsView boards={boards} loading={boardsLoading}
+            onSelect={b => { setSelectedBoard(b); setView("board-detail"); }}
+            onCreateBoard={() => setShowCreateBoard(true)} />
         )}
-        {view === "board-detail" && selectedBoard && (
-          <BoardDetailView board={selectedBoard} columns={columns} setColumns={setColumns} />
-        )}
+        {view === "board-detail" && selectedBoard && <BoardDetailView board={selectedBoard} />}
         {view === "profile"  && <ProfileView />}
         {view === "team"     && <TeamView />}
         {view === "settings" && <SettingsView />}
       </main>
 
       {showNotif && <div className="fixed inset-0 z-30" onClick={() => setShowNotif(false)} />}
+      {showCreateBoard && (
+        <CreateBoardModal
+          onClose={() => setShowCreateBoard(false)}
+          onCreate={b => setBoards(prev => [b, ...prev])}
+        />
+      )}
     </div>
   );
 }
